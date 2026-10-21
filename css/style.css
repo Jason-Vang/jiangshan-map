@@ -2420,6 +2420,12 @@ h2 {
   animation: fadeEnter 0.25s ease-out;
 }
 
+/* During timeline autoplay layers swap every few hundred ms; skip the fade so
+   territories never get stuck at the animation's starting opacity. */
+#atlas-svg.is-autoplaying .fade-enter {
+  animation: none;
+}
+
 @keyframes fadeEnter {
   from {
     opacity: 0.25;
