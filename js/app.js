@@ -4881,12 +4881,25 @@
     }
 
     startAutoplay() {
-      if (this.challenge) return;
+      if (this.challenge || this.playing) return;
       this.playing = true;
+      // Layer fade-ins are disabled while playing (see .is-autoplaying in style.css):
+      // snapshots swap faster than the fade can finish, which left territories stuck
+      // at the fade's starting opacity and effectively invisible during playback.
+      if (this.svg && this.svg.classList) this.svg.classList.add('is-autoplaying');
       this.closeMilestoneBalloon();
       this._updateAutoplayUi();
       if (this.year >= this.maxYear) this.jumpToYear(this.minYear);
-      this.playInterval = setInterval(() => {
+      this._scheduleAutoplayTick();
+    }
+
+    // Self-pacing loop instead of setInterval: the next step is only queued after the
+    // browser has rendered the current one, so slow frames can never pile up ticks
+    // and starve the map of repaints.
+    _scheduleAutoplayTick() {
+      this.playInterval = setTimeout(() => {
+        this.playInterval = null;
+        if (!this.playing) return;
         const cur = this.dynasties[this.dynastyIdx];
         const delta = Math.max(1, Math.round((cur.toYear - cur.fromYear) / 140));
         if (this.year >= this.maxYear) {
@@ -4894,15 +4907,29 @@
           return;
         }
         this.jumpToYear(this.year + delta);
+        if (!this.playing) return;
+        if (typeof requestAnimationFrame === 'function') {
+          this.playRaf = requestAnimationFrame(() => {
+            this.playRaf = null;
+            if (this.playing) this._scheduleAutoplayTick();
+          });
+        } else {
+          this._scheduleAutoplayTick();
+        }
       }, 280);
     }
 
     stopAutoplay() {
       this.playing = false;
+      if (this.svg && this.svg.classList) this.svg.classList.remove('is-autoplaying');
       this._updateAutoplayUi();
       if (this.playInterval) {
-        clearInterval(this.playInterval);
+        clearTimeout(this.playInterval);
         this.playInterval = null;
+      }
+      if (this.playRaf) {
+        if (typeof cancelAnimationFrame === 'function') cancelAnimationFrame(this.playRaf);
+        this.playRaf = null;
       }
       const cur = this.dynasties[this.dynastyIdx];
       if (cur) this._syncAutoMilestoneBalloon(cur);
